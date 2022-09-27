@@ -1,17 +1,23 @@
 use super::tlv;
 
-use std::io::{BufReader, Read};
+use std::io::BufReader;
 use std::os::unix::net::{UnixStream,UnixListener};
 use std::thread;
 use std::path::Path;
 
 fn handle_client(stream: UnixStream) {
     let mut stream = BufReader::new(stream);
-    let res = tlv::streamread::read_tlv(&mut stream);
-    if (res.is_ok()) {
-        println!("Got {:?}", res.unwrap());
-    } else {
-        println!("Error: {:?}", res.err().unwrap());
+    loop {
+        let res = tlv::streamread::read_tlv(&mut stream);
+        match res {
+            Ok(tlv) => {
+                println!("TLV: {:?}", tlv);
+            }
+            Err(e) => {
+                println!("DecodeError: {:?}", e);
+                break;
+            }
+        }
     }
 }
 
