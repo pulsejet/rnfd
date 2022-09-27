@@ -1,3 +1,6 @@
+mod socket;
+mod tlv;
+
 fn main() {
-    println!("Hello, world!");
+    socket::listen_unix("/tmp/rnfd.sock");
 }
