@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use super::tlv::TLV;
+use super::TLV;
 
 /*
  * If the first octet is less than or equal to 252 (0xFC), the number is encoded in that octet.

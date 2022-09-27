@@ -8,10 +8,17 @@ use std::path::Path;
 fn handle_client(stream: UnixStream) {
     let mut stream = BufReader::new(stream);
     loop {
-        let res = tlv::streamread::read_tlv(&mut stream);
+        let res = tlv::stream_decode::read_tlv(&mut stream);
         match res {
-            Ok(tlv) => {
-                println!("TLV: {:?}", tlv);
+            Ok(packet) => {
+                println!("TLV: {:?}", packet);
+
+                // Quickly hand off the TLV to a processing thread
+                if packet.t == tlv::Type::Interest as u64 {
+                    println!("Interest: {:?}", packet);
+                } else if packet.t == tlv::Type::Data as u64 {
+                    println!("Data: {:?}", packet);
+                }
             }
             Err(e) => {
                 println!("DecodeError: {:?}", e);
