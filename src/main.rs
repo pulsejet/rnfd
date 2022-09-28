@@ -8,7 +8,7 @@ const NUM_DISPATCH_THREADS: i32 = 4;
 
 fn main() {
     // Connection-to-dispatcher queue
-    let (s1, r1) = crossbeam::channel::bounded::<Arc<tlv::TLV>>(5);
+    let (s1, r1) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50);
 
     // Start dispatch threads
     let mut dispatchers = Vec::new();
@@ -16,6 +16,6 @@ fn main() {
         dispatchers.push(dispatch::thread(r1.clone()));
     }
 
-    // Start listening for connections
-    socket::listen_unix("/tmp/rnfd.sock", s1);
+    // Start listening for data
+    socket::listen_udp("127.0.0.1:7766", s1).unwrap();
 }
