@@ -4,26 +4,28 @@ use crossbeam::channel::Receiver;
 use crate::pipeline::Interest;
 use crate::socket::UdpPacket;
 use crate::tlv;
+use crate::table::Table;
 
 pub fn thread(chan_in: Receiver<Arc<UdpPacket>>) {
     std::thread::spawn(move || {
+        let table = Table::new();
         loop {
             let packet = chan_in.recv().unwrap();
-            process_packet(packet);
+            process_packet(&table, packet);
         }
     });
 }
 
-fn process_packet(packet: Arc<UdpPacket>) {
+fn process_packet(table: &Table, packet: Arc<UdpPacket>) {
     let p_tlo = tlv::vec_decode::read_tlo(&packet.data[..]).unwrap(); // already checked
     if p_tlo.t == tlv::Type::Interest as u64 {
-        process_interest(packet, p_tlo);
+        process_interest(table, packet, p_tlo);
     } else {
         println!("Unknown TLV type, dropping");
     }
 }
 
-fn process_interest(packet: Arc<UdpPacket>, p_tlo: tlv::TLO) {
+fn process_interest(table: &Table, packet: Arc<UdpPacket>, p_tlo: tlv::TLO) {
     // Get name
     let name_tlo = tlv::vec_decode::read_tlo(&packet.data[p_tlo.o..]).unwrap(); // already checked
     let name = &packet.data[p_tlo.o+name_tlo.o..p_tlo.o+name_tlo.o+name_tlo.l as usize];
@@ -79,5 +81,16 @@ fn process_interest(packet: Arc<UdpPacket>, p_tlo: tlv::TLO) {
 
     // TODO: localhost scope violation check
 
+    // Get 64-bit nonce hash and check against dead nonce list
+    let nonce = match interest.nonce {
+        Some(nonce) => nonce,
+        None => { return; } // we don't forward interests without a nonce
+    };
+    let nonce_hash = fasthash::metro::hash64_with_seed(&name[..], nonce);
+    if table.dnl.contains(nonce_hash) {
+        // TODO: onInterestLoop (send NACK)
+        return;
+    }
 
+    // Insert into PIT
 }

@@ -4,9 +4,10 @@ mod socket;
 mod tlv;
 mod dispatch;
 mod pipeline;
+mod table;
 
-const NUM_DISPATCH_THREADS: i32 = 2;
-const NUM_PIPELINE_THREADS: i32 = 2;
+const NUM_DISPATCH_THREADS: usize = 2;
+const NUM_PIPELINE_THREADS: usize = 2;
 
 fn main() {
     // Connection-to-dispatcher queue
