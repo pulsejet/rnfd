@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{io::Read, sync::Arc};
 
 use super::TLV;
 
@@ -35,12 +35,12 @@ fn read_varnumber(stream: &mut impl Read) -> Result<u64, std::io::Error> {
     ));
 }
 
-pub fn read_tlv(stream: &mut impl Read) -> Result<TLV, std::io::Error> {
+pub fn read_tlv(stream: &mut impl Read) -> Result<Arc<TLV>, std::io::Error> {
     let t: u64 = read_varnumber(stream)?;
     let l: u64 = read_varnumber(stream)?;
 
     let mut v = vec![0u8; l as usize];
     stream.read_exact(&mut v)?;
 
-    Ok(TLV::new(t, l, v))
+    Ok(Arc::new(TLV { t, l, v }))
 }
