@@ -12,8 +12,6 @@ fn handle_client(stream: UnixStream, sender: Sender<Arc<tlv::TLV>>) {
         let res = tlv::stream_decode::read_tlv(&mut stream);
         match res {
             Ok(packet) => {
-                println!("TLV: {:?}", packet);
-
                 // Quickly hand off the TLV to a dispatch thread
                 let res = sender.send(Arc::clone(&packet));
                 if res.is_err() {

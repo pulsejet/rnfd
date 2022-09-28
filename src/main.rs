@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 mod socket;
 mod tlv;
+mod dispatch;
 
 const NUM_DISPATCH_THREADS: i32 = 4;
 
@@ -12,13 +13,7 @@ fn main() {
     // Start dispatch threads
     let mut dispatchers = Vec::new();
     for _ in 0..NUM_DISPATCH_THREADS {
-        let rc = r1.clone();
-        dispatchers.push(std::thread::spawn(move || {
-            loop {
-                let packet = rc.recv().unwrap();
-                println!("Dispatch: {:?}", packet);
-            }
-        }));
+        dispatchers.push(dispatch::thread(r1.clone()));
     }
 
     // Start listening for connections
