@@ -35,12 +35,12 @@ fn read_varnumber(stream: &mut impl Read) -> Result<u64, std::io::Error> {
     ));
 }
 
-pub fn read_tlv(stream: &mut impl Read) -> Result<TLV, std::io::Error> {
-    let t: u64 = read_varnumber(stream)?;
-    let l: u64 = read_varnumber(stream)?;
+// pub fn read_tlv(stream: &mut impl Read) -> Result<TLV, std::io::Error> {
+//     let t: u64 = read_varnumber(stream)?;
+//     let l: u64 = read_varnumber(stream)?;
 
-    let mut v = vec![0u8; l as usize];
-    stream.read_exact(&mut v)?;
+//     let mut v = vec![0u8; l as usize];
+//     stream.read_exact(&mut v)?;
 
-    Ok(TLV { t, l, v })
-}
+//     Ok(TLV { t, l, v })
+// }

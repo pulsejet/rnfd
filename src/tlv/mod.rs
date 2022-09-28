@@ -1,14 +1,18 @@
 pub mod stream_decode;
+pub mod vec_decode;
 
-#[derive(Debug, Clone)]
-pub struct TLV {
+#[derive(Debug)]
+pub struct TLV<'s> {
     pub t: u64,
     pub l: u64,
-    pub v: Vec<u8>,
+    pub v: &'s [u8],
 }
 
-impl TLV {
-    pub fn new(t: u64, l: u64, v: Vec<u8>) -> Self { Self { t, l, v } }
+#[derive(Debug)]
+pub struct TLO {
+    pub t: u64,
+    pub l: u64,
+    pub o: usize,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
