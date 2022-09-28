@@ -27,6 +27,10 @@ fn dispatch_udp(packet: Arc<UdpPacket>, chans_out: &Vec<Sender<Arc<UdpPacket>>>)
                     return;
                 }
                 let name_tlo = res.unwrap();
+                if name_tlo.t != tlv::Type::Name as u64 {
+                    println!("First TLV is not a Name");
+                    return;
+                }
 
                 // Hash the name
                 // TODO: drop segment number in this hashing
