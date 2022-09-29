@@ -1,4 +1,4 @@
-use std::{sync::Arc, borrow::Borrow};
+use std::sync::Arc;
 use crate::{table::Table, socket::UdpPacket};
 use super::{strategy::Strategy, Interest};
 

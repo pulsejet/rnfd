@@ -1,5 +1,5 @@
 use std::mem::MaybeUninit;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use crossbeam::channel::{Sender, Receiver};
 use socket2::Socket;

@@ -80,7 +80,7 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
             // Todo: check nonce and duplicate bla bla
 
             // Add in record to PIT entry
-            let mut is_new = false;
+            let is_new: bool;
             {
                 let mut node = node_ref.borrow_mut();
                 is_new = node.in_records.len() == 0;
