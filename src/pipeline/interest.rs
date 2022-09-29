@@ -1,10 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::pipeline::Interest;
 use crate::socket::UdpPacket;
-use crate::table::pit::PITEntry;
+use crate::table::pit::{PITEntry, NextHop, PITNode};
 use crate::tlv;
 use crate::table::Table;
+use crate::pipeline::strategy::Strategy;
 
 pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::TLO) {
     // Get name
@@ -51,9 +54,6 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
         o += tlo.o + tlo.l as usize;
     }
 
-    // Log
-    println!("Incoming {:?}", interest);
-
     // Check hop limit
     match interest.hop_limit {
         Some(hop_limit) => { if hop_limit == 0 { return; } }
@@ -78,14 +78,19 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
     // TODO: forwarding hint checks
     let res = table.pit.insert_or_get(&interest.name);
     match res {
-        Ok((entry, strategy, nexthops)) => {
+        Ok((node_ref, strategy, nexthops)) => {
+            // Todo: check nonce and duplicate bla bla
+
+            // Add in record to PIT entry
+            let mut node = node_ref.borrow_mut();
+            let is_new = node.in_records.len() == 0;
+            let entry = PITEntry::new(&interest, packet.addr);
+            node.in_records.push_back(entry);
+
             // Move walk results to interest struct
             interest.strategy = Some(strategy);
             interest.nexthops = Some(nexthops);
-
-            // Add in record to PIT entry
-            let is_new = entry.in_records.len() == 0;
-            entry.in_records.push_back(PITEntry::new(&interest, packet.addr));
+            interest.pit_node = Some(node_ref.clone());
 
             if is_new {
                 // look up content store
@@ -101,9 +106,12 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
 fn on_cs_miss(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest) {
     // TODO: set PIT expiry timer to the time that the last PIT in-record expires
 
-    println!("CS miss for {:?}", interest);
-
     // TODO: forwarding strategy
 
     // For now just use best route strategy
+    super::best_route::BestRouteStrategy::after_receive_interest(table, packet, interest);
+}
+
+pub fn on_outgoing_interest(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest, nexthops: Vec<NextHop>) {
+    println!("Outgoing interest: {:?}", interest.name);
 }

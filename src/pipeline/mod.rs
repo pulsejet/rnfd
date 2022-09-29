@@ -1,9 +1,12 @@
-use crate::{tlv, table::pit::NextHop};
+use std::{rc::Rc, cell::RefCell};
+
+use crate::{tlv, table::pit::{NextHop, PITNode}};
 
 pub mod incoming;
 pub mod interest;
+pub mod strategy;
+pub mod best_route;
 
-#[derive(Debug)]
 pub struct Interest {
     pub name: Vec<u8>,
     pub can_be_prefix: Option<bool>,
@@ -16,8 +19,9 @@ pub struct Interest {
     pub outer_tlo: tlv::TLO,
     pub strategy: Option<u64>,
     pub nexthops: Option<Vec<NextHop>>,
-
+    pub pit_node: Option<Rc<RefCell<PITNode>>>,
 }
+
 impl Interest {
     pub fn new(name: Vec<u8>, o_tlo: tlv::TLO) -> Interest {
         Interest {
@@ -31,6 +35,7 @@ impl Interest {
             outer_tlo: o_tlo,
             strategy: None,
             nexthops: None,
+            pit_node: None,
         }
     }
 }

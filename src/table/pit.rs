@@ -1,7 +1,7 @@
-use std::{collections::{HashMap, LinkedList}, net::SocketAddr };
+use std::{collections::{HashMap, LinkedList}, net::SocketAddr, rc::Rc, cell::RefCell };
 use crate::{pipeline::Interest, tlv::vec_decode};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct NextHop {
     pub addr: SocketAddr,
     pub cost: u64,
@@ -9,7 +9,7 @@ pub struct NextHop {
 
 pub struct PITNode {
     pub name: Vec<u8>,
-    pub children: HashMap<u64, PITNode>,
+    pub children: HashMap<u64, Rc<RefCell<PITNode>>>,
     pub in_records: LinkedList<PITEntry>,
     pub strategy: u64,
     pub nexthops: Vec<NextHop>,
@@ -27,6 +27,7 @@ impl PITNode {
     }
 }
 
+#[derive(Debug)]
 pub struct PITEntry {
     expiry: u64,
     face: std::net::SocketAddr,
@@ -52,13 +53,13 @@ impl PITEntry {
 }
 
 pub struct PIT {
-    root: PITNode,
+    root: Rc<RefCell<PITNode>>,
 }
 
 impl PIT {
     pub fn new() -> PIT {
         PIT {
-            root: PITNode::new(Vec::new()),
+            root: Rc::new(RefCell::new(PITNode::new(Vec::new()))),
         }
     }
 
@@ -67,68 +68,90 @@ impl PIT {
      * Returns (node, strategy, nexthops)
      */
     pub fn insert_or_get(&mut self, name: &Vec<u8>) -> Result<
-        (&mut PITNode, u64, Vec<NextHop>),
+        (Rc<RefCell<PITNode>>, u64, Vec<NextHop>),
         std::io::Error>
     {
         let mut o = 0; // offset in name
-        let mut node = &mut self.root;
+        let mut node_ref = self.root.clone();
         let mut strategy = 0;
         let mut nexthops = Vec::new();
 
         while o < name.len() {
-            if node.strategy > 0 {
-                strategy = node.strategy;
-            }
-            if node.nexthops.len() > 0 {
-                nexthops = node.nexthops.clone();
-            }
-
             let tlo = vec_decode::read_tlo(&name[o..])?;
-            let n_name = &name[o+tlo.o..o+tlo.o+tlo.l as usize];
-            let n_hash = fasthash::metro::hash64(n_name);
-            node = node.children.entry(n_hash).or_insert(PITNode::new(n_name.to_vec()));
+
+            node_ref = {
+                let mut node = node_ref.borrow_mut();
+
+                if node.strategy > 0 {
+                    strategy = node.strategy;
+                }
+                if node.nexthops.len() > 0 {
+                    nexthops = node.nexthops.clone();
+                }
+
+                let n_name = &name[o..o+tlo.o+tlo.l as usize];
+                let n_hash = fasthash::metro::hash64(n_name);
+                let enode = node.children.get(&n_hash);
+
+                match enode {
+                    Some(n) => { n.clone() },
+                    None => {
+                        let n = Rc::new(RefCell::new(PITNode::new(n_name.to_vec())));
+                        node.children.insert(n_hash, n.clone());
+                        n
+                    }
+                }
+            };
+
             o += tlo.o + tlo.l as usize;
         }
 
-        return Ok((node, strategy, nexthops));
+        return Ok((node_ref.clone(), strategy, nexthops));
     }
 
     /**
      * Find a name node in the PIT
      * Returns (node, strategy, nexthops)
      */
-    pub fn get(&mut self, interest: &Interest) -> Option<(&mut PITNode, u64, Vec<NextHop>)> {
+    pub fn get(&mut self, interest: &Interest) -> Option<(Rc<RefCell<PITNode>>, u64, Vec<NextHop>)> {
         let mut o = 0; // offset in name
-        let mut node = &mut self.root;
+        let mut node_ref_opt = Some(self.root.clone());
         let mut strategy = 0;
         let mut nexthops = Vec::new();
 
         while o < interest.name.len() {
-            if node.strategy > 0 {
-                strategy = node.strategy;
-            }
-            if node.nexthops.len() > 0 {
-                nexthops = node.nexthops.clone();
-            }
-
             let tlo = vec_decode::read_tlo(&interest.name[o..]);
-            match tlo {
-                Ok(tlo) => {
-                    let n_name = &interest.name[o+tlo.o..o+tlo.o+tlo.l as usize];
-                    let n_hash = fasthash::metro::hash64(n_name);
-                    let found = node.children.get_mut(&n_hash);
-                    if found.is_none() {
-                        return None;
+
+            node_ref_opt = {
+                let node_ref = node_ref_opt.unwrap();
+                let node = node_ref.borrow();
+
+                if node.strategy > 0 {
+                    strategy = node.strategy;
+                }
+                if node.nexthops.len() > 0 {
+                    nexthops = node.nexthops.clone();
+                }
+
+                match tlo {
+                    Ok(tlo) => {
+                        let n_name = &interest.name[o+tlo.o..o+tlo.o+tlo.l as usize];
+                        let n_hash = fasthash::metro::hash64(n_name);
+                        let n = node.children.get(&n_hash);
+                        o += tlo.o + tlo.l as usize;
+                        match n {
+                            Some(n) => { Some(n.clone()) },
+                            None => { None }
+                        }
                     }
-                    node = found.unwrap();
-                    o += tlo.o + tlo.l as usize;
+                    Err(_) => { None }
                 }
-                Err(_) => {
-                    return None;
-                }
-            }
+            };
         }
 
-        return Some((node, strategy, nexthops));
+        match node_ref_opt {
+            Some(n) => { Some((n, strategy, nexthops)) },
+            None => { None }
+        }
     }
 }
