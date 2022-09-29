@@ -1,4 +1,4 @@
-use crate::tlv;
+use crate::{tlv, table::pit::NextHop};
 
 pub mod incoming;
 pub mod interest;
@@ -11,7 +11,12 @@ pub struct Interest {
     pub nonce: Option<u32>,
     pub lifetime: Option<u64>,
     pub hop_limit: Option<u8>,
+
+    // Derived fields
     pub outer_tlo: tlv::TLO,
+    pub strategy: Option<u64>,
+    pub nexthops: Option<Vec<NextHop>>,
+
 }
 impl Interest {
     pub fn new(name: Vec<u8>, o_tlo: tlv::TLO) -> Interest {
@@ -22,7 +27,10 @@ impl Interest {
             nonce: None,
             lifetime: None,
             hop_limit: None,
+
             outer_tlo: o_tlo,
+            strategy: None,
+            nexthops: None,
         }
     }
 }

@@ -74,18 +74,18 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
         return;
     }
 
-    // Insert into DNL
-    // This behavior is different from NFD; rNFD does not use PIT
-    // to check for duplicate nonce
-    table.dnl.insert(nonce_hash);
-
-    // Insert into PIT, this will get aggregated automatically
+    // Create new PIT entry
     // TODO: forwarding hint checks
-    let entry = table.pit.insert_or_get(&interest.name);
-    match entry {
-        Ok(entry) => {
-            let is_new = entry.pending_interests.len() == 0;
-            entry.pending_interests.push_back(PITEntry::new(&interest, packet.addr));
+    let res = table.pit.insert_or_get(&interest.name);
+    match res {
+        Ok((entry, strategy, nexthops)) => {
+            // Move walk results to interest struct
+            interest.strategy = Some(strategy);
+            interest.nexthops = Some(nexthops);
+
+            // Add in record to PIT entry
+            let is_new = entry.in_records.len() == 0;
+            entry.in_records.push_back(PITEntry::new(&interest, packet.addr));
 
             if is_new {
                 // look up content store
@@ -102,4 +102,8 @@ fn on_cs_miss(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest) {
     // TODO: set PIT expiry timer to the time that the last PIT in-record expires
 
     println!("CS miss for {:?}", interest);
+
+    // TODO: forwarding strategy
+
+    // For now just use best route strategy
 }
