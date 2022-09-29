@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 crossbeam = "0.8"
 fasthash = "0.4"
+socket2 = "0.4.7"

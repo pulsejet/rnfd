@@ -10,7 +10,8 @@ pub struct NextHop {
 pub struct PITNode {
     pub name: Vec<u8>,
     pub children: HashMap<u64, Rc<RefCell<PITNode>>>,
-    pub in_records: LinkedList<PITEntry>,
+    pub in_records: LinkedList<InRecord>,
+    pub out_records: HashMap<u64, OutRecord>,
     pub strategy: u64,
     pub nexthops: Vec<NextHop>,
 }
@@ -21,6 +22,7 @@ impl PITNode {
             name: name,
             children: HashMap::new(),
             in_records: LinkedList::new(),
+            out_records: HashMap::new(),
             strategy: 0,
             nexthops: Vec::new(),
         }
@@ -28,7 +30,7 @@ impl PITNode {
 }
 
 #[derive(Debug)]
-pub struct PITEntry {
+pub struct InRecord {
     expiry: u64,
     face: std::net::SocketAddr,
     can_be_prefix: Option<bool>,
@@ -38,9 +40,9 @@ pub struct PITEntry {
     hop_limit: Option<u8>,
 }
 
-impl PITEntry {
-    pub fn new(interest: &Interest, face: SocketAddr) -> PITEntry {
-        PITEntry {
+impl InRecord {
+    pub fn new(interest: &Interest, face: SocketAddr) -> InRecord {
+        InRecord {
             expiry: 0,
             face,
             can_be_prefix: interest.can_be_prefix,
@@ -50,6 +52,14 @@ impl PITEntry {
             hop_limit: interest.hop_limit,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct OutRecord {
+    pub face: std::net::SocketAddr,
+    pub nonce: u32,
+    pub timestamp: u64,
+    // nacked_field: Vec<u64>,
 }
 
 pub struct PIT {
@@ -89,7 +99,11 @@ impl PIT {
                     nexthops = node.nexthops.clone();
                 }
 
+                if o + tlo.o + tlo.l as usize > name.len() {
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Incorrect name TLV encoding"));
+                }
                 let n_name = &name[o..o+tlo.o+tlo.l as usize];
+
                 let n_hash = fasthash::metro::hash64(n_name);
                 let enode = node.children.get(&n_hash);
 

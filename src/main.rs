@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, net::SocketAddr};
 
 mod socket;
 mod tlv;
@@ -33,14 +33,17 @@ fn main() {
         dispatchers.push(dispatch::thread(r1.clone(), queues));
     }
 
+    // Pipeline to sender queue
+    let (s3, r3) = crossbeam::channel::bounded::<(Vec<u8>, SocketAddr)>(50);
+
     // Start pipeline threads
     let mut pipelines = Vec::new();
     for i in 0..NUM_PIPELINE_THREADS {
         println!("Starting pipeline thread {i}");
-        pipelines.push(pipeline::incoming::thread(pipeline_queues[i as usize].1.clone()));
+        pipelines.push(pipeline::incoming::thread(pipeline_queues[i as usize].1.clone(), s3.clone()));
     }
 
     // Start listening for data
     println!("Starting UDP listener");
-    socket::listen_udp("127.0.0.1:7766", s1).unwrap();
+    socket::listen_udp("127.0.0.1:7766", s1, r3).unwrap();
 }

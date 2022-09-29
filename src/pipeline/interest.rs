@@ -1,10 +1,8 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::pipeline::Interest;
-use crate::socket::UdpPacket;
-use crate::table::pit::{PITEntry, NextHop, PITNode};
+use crate::socket::{UdpPacket};
+use crate::table::pit::{InRecord, NextHop, OutRecord};
 use crate::tlv;
 use crate::table::Table;
 use crate::pipeline::strategy::Strategy;
@@ -82,10 +80,13 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
             // Todo: check nonce and duplicate bla bla
 
             // Add in record to PIT entry
-            let mut node = node_ref.borrow_mut();
-            let is_new = node.in_records.len() == 0;
-            let entry = PITEntry::new(&interest, packet.addr);
-            node.in_records.push_back(entry);
+            let mut is_new = false;
+            {
+                let mut node = node_ref.borrow_mut();
+                is_new = node.in_records.len() == 0;
+                let entry = InRecord::new(&interest, packet.addr);
+                node.in_records.push_back(entry);
+            }
 
             // Move walk results to interest struct
             interest.strategy = Some(strategy);
@@ -114,4 +115,31 @@ fn on_cs_miss(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest) {
 
 pub fn on_outgoing_interest(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest, nexthops: Vec<NextHop>) {
     println!("Outgoing interest: {:?}", interest.name);
+
+    // Insert out-records and send UDP packets
+    let node_ref = interest.pit_node.unwrap();
+    let mut node = node_ref.borrow_mut();
+
+    for nexthop in nexthops {
+        let nexthop_hash = fasthash::metro::hash64(&nexthop.addr.to_string());
+        let old_record = node.out_records.get_mut(&nexthop_hash);
+        match old_record {
+            Some(old_record) => {
+                old_record.nonce = interest.nonce.unwrap();
+                old_record.timestamp = 0;
+            }
+            None => {
+                let entry = OutRecord {
+                    face: nexthop.addr,
+                    nonce: interest.nonce.unwrap(),
+                    timestamp: 0, // TODO: get current time
+                };
+                node.out_records.insert(nexthop_hash, entry);
+            }
+        }
+
+        // Send packet
+        // TODO: update nexthop field first
+        table.send_chan.send((packet.data.clone(), nexthop.addr)).unwrap();
+    }
 }
