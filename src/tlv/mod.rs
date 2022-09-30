@@ -1,12 +1,4 @@
-pub mod stream_decode;
 pub mod vec_decode;
-
-#[derive(Debug)]
-pub struct TLV<'s> {
-    pub t: u64,
-    pub l: u64,
-    pub v: &'s [u8],
-}
 
 #[derive(Debug)]
 pub struct TLO {

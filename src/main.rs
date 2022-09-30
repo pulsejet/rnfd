@@ -33,7 +33,7 @@ fn main() {
         dispatchers.push(dispatch::thread(r1.clone(), queues));
     }
 
-    // Pipeline to sender queue
+    // Pipeline to connection queue
     let (s3, r3) = crossbeam::channel::bounded::<(Vec<u8>, SocketAddr)>(50);
 
     // Start pipeline threads
