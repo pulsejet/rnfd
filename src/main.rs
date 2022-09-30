@@ -5,6 +5,7 @@ mod tlv;
 mod dispatch;
 mod pipeline;
 mod table;
+mod mgmt;
 
 const NUM_DISPATCH_THREADS: usize = 2;
 const NUM_PIPELINE_THREADS: usize = 2;
@@ -20,6 +21,9 @@ fn main() {
         pipeline_queues.push((s2, r2));
     }
 
+    // Dispatcher-to-management queue
+    let (sm, rm) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50);
+
     // Start dispatch threads
     let mut dispatchers = Vec::new();
     for i in 0..NUM_DISPATCH_THREADS {
@@ -30,11 +34,19 @@ fn main() {
         for (s, _) in &pipeline_queues {
             queues.push(s.clone());
         }
-        dispatchers.push(dispatch::thread(r1.clone(), queues));
+        dispatchers.push(dispatch::thread(r1.clone(), sm.clone(), queues));
     }
 
     // Pipeline to connection queue
     let (s3, r3) = crossbeam::channel::bounded::<(Vec<u8>, SocketAddr)>(50);
+
+    { // Start management thread
+        let mut queues = Vec::new();
+        for (s, _) in &pipeline_queues {
+            queues.push(s.clone());
+        }
+        mgmt::thread(rm.clone(), s3.clone(), queues);
+    }
 
     // Start pipeline threads
     let mut pipelines = Vec::new();

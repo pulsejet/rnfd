@@ -21,7 +21,7 @@ impl Strategy for BestRouteStrategy {
             res_hops.push(nexthop.clone());
         } else {
             // TODO: send NACK
-            println!("No nexthops");
+            println!("No nexthops for interest: {:?}", packet.data);
             return;
         }
 

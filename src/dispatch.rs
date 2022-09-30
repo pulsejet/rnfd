@@ -5,16 +5,27 @@ use crossbeam::channel::Sender;
 
 use crossbeam::channel::Receiver;
 
-pub fn thread(chan_in: Receiver<Arc<UdpPacket>>, chans_out: Vec<Sender<Arc<UdpPacket>>>) {
+// /8=localhost/8=nfd
+const MGMT_MATCH: &'static [u8] = &[8, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 8, 3, 110, 102, 100];
+
+pub fn thread(
+    chan_in: Receiver<Arc<UdpPacket>>,
+    chan_mgmt: Sender<Arc<UdpPacket>>,
+    chans_out: Vec<Sender<Arc<UdpPacket>>>,
+) {
     std::thread::spawn(move || {
         loop {
             let packet = chan_in.recv().unwrap();
-            dispatch_udp(packet, &chans_out);
+            dispatch_udp(packet, &chan_mgmt, &chans_out);
         }
     });
 }
 
-fn dispatch_udp(packet: Arc<UdpPacket>, chans_out: &Vec<Sender<Arc<UdpPacket>>>) {
+fn dispatch_udp(
+    packet: Arc<UdpPacket>,
+    chan_mgmt: &Sender<Arc<UdpPacket>>,
+    chans_out: &Vec<Sender<Arc<UdpPacket>>>,
+) {
     let res = tlv::vec_decode::read_tlo(&packet.data[..]);
     match res {
         Ok(tlo) => {
@@ -32,10 +43,30 @@ fn dispatch_udp(packet: Arc<UdpPacket>, chans_out: &Vec<Sender<Arc<UdpPacket>>>)
                     return;
                 }
 
+                // Check validity of name size
+                let o = tlo.o+name_tlo.o;
+                if o+name_tlo.l as usize > packet.data.len() {
+                    return;
+                }
+
+                // Check if this is a management packet
+                if name_tlo.l as usize >= MGMT_MATCH.len() {
+                    let mut is_mgmt = true;
+                    for i in 0..MGMT_MATCH.len() {
+                        if packet.data[o..][i] != MGMT_MATCH[i] {
+                            is_mgmt = false;
+                            break;
+                        }
+                    }
+                    if is_mgmt {
+                        chan_mgmt.send(packet).unwrap();
+                        return;
+                    }
+                }
+
                 // Hash the name
                 // TODO: drop segment number in this hashing
                 let mut hash = 0;
-                let o = tlo.o+name_tlo.o;
                 for b in &packet.data[o..o+name_tlo.l as usize] {
                     hash += *b as u64;
                 }
