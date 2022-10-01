@@ -71,8 +71,9 @@ fn dispatch_udp(
                     }
                 }
 
-                if name_tlo.l > 30  { // hackkkkkkkk
+                if name_tlo.l > 32  { // hackkkkkkkk
                     // flood to all pipelines
+                    println!("Flood to all pipelines {}", name_tlo.l);
                     for chan in chans_out {
                         chan.push(packet.clone());
                     }

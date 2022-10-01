@@ -6,6 +6,9 @@ default-run = "daemon"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.dev]
+opt-level = 3
+
 [[bin]]
 name = "daemon"
 path = "src/main.rs"
@@ -18,3 +21,4 @@ path = "src/unix_socket/main.rs"
 crossbeam = "0.8"
 fasthash = "0.4"
 socket2 = "0.4.7"
+nix = "0.25.0"

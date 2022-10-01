@@ -7,8 +7,8 @@ use crate::socket::UdpPacket;
 use crate::tlv;
 use crate::table::Table;
 
-pub fn thread(chan_in: Arc<Injector<Arc<UdpPacket>>>, chan_out: Arc<Injector<(Vec<u8>, SocketAddr)>>) {
-    std::thread::spawn(move || {
+pub fn thread(chan_in: Arc<Injector<Arc<UdpPacket>>>, chan_out: Arc<Injector<(Vec<u8>, SocketAddr)>>) -> std::thread::JoinHandle<()> {
+    return std::thread::spawn(move || {
         let mut table = Table::new(chan_out);
         loop {
             let steal = chan_in.steal();

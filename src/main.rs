@@ -9,8 +9,8 @@ mod pipeline;
 mod table;
 mod mgmt;
 
-const NUM_DISPATCH_THREADS: usize = 4;
-const NUM_PIPELINE_THREADS: usize = 4;
+const NUM_DISPATCH_THREADS: usize = 8;
+const NUM_PIPELINE_THREADS: usize = 8;
 
 fn main() {
     // Connection-to-dispatcher queue
@@ -58,7 +58,13 @@ fn main() {
     }
 
     // Start listening for data
-    println!("Starting UDP listener");
     socket::listen_udp("127.0.0.1:7766", q1.clone(), q3.clone()).unwrap();
     socket::listen_udp("127.0.0.1:7766", q1.clone(), q3.clone()).unwrap();
+    socket::listen_udp("127.0.0.1:7766", q1.clone(), q3.clone()).unwrap();
+    socket::listen_udp("127.0.0.1:7766", q1.clone(), q3.clone()).unwrap();
+
+    // Join all pipelines threads
+    for t in pipelines {
+        t.join().unwrap();
+    }
 }

@@ -52,7 +52,7 @@ pub fn read_tlv(stream: &mut impl Read) -> Result<TLV, std::io::Error> {
     let (l, mut d2) = read_varnumber(stream)?;
 
     let mut v = vec![0u8; l as usize];
-    stream.read_exact(&mut v)?;
+    stream.read(&mut v)?;
 
     let mut data = d1;
     data.append(&mut d2);
