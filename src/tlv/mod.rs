@@ -1,4 +1,5 @@
 pub mod vec_decode;
+pub mod varnumber;
 
 #[derive(Debug)]
 pub struct TLO {
