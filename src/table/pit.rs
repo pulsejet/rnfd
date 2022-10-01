@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::SocketAddr, rc::Rc, cell::RefCell };
+use std::{collections::HashMap, net::SocketAddr, rc::Rc, cell::{RefCell, RefMut} };
 use crate::{pipeline::Interest, tlv::vec_decode};
 
 #[derive(Debug, Clone, Copy)]
@@ -90,25 +90,30 @@ impl PIT {
      */
     pub fn insert_or_get(&mut self, name: &Vec<u8>) -> Result<
         (Rc<RefCell<PITNode>>, u64, Vec<NextHop>),
-        std::io::Error>
-    {
+        std::io::Error
+    >{
         let mut o = 0; // offset in name
         let mut node_ref = self.root.clone();
         let mut strategy = 0;
         let mut nexthops = Vec::new();
 
+        // Closure to get strategy and nexthops at current node
+        let mut get_strategy_nexthops = |node: &RefMut<PITNode>| {
+            if node.strategy > 0 {
+                strategy = node.strategy;
+            }
+            if node.nexthops.len() > 0 {
+                nexthops = node.nexthops.clone();
+            }
+        };
+
+        // Go over entire name
         while o < name.len() {
             let tlo = vec_decode::read_tlo(&name[o..])?;
 
             node_ref = {
                 let mut node = node_ref.borrow_mut();
-
-                if node.strategy > 0 {
-                    strategy = node.strategy;
-                }
-                if node.nexthops.len() > 0 {
-                    nexthops = node.nexthops.clone();
-                }
+                get_strategy_nexthops(&node);
 
                 if o + tlo.o + tlo.l as usize > name.len() {
                     return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Incorrect name TLV encoding"));
@@ -131,6 +136,9 @@ impl PIT {
             o += tlo.o + tlo.l as usize;
         }
 
+        // Check leaf node as well
+        get_strategy_nexthops(&node_ref.borrow_mut());
+
         return Ok((node_ref.clone(), strategy, nexthops));
     }
 
@@ -139,6 +147,7 @@ impl PIT {
      * Returns (node, strategy, nexthops)
      */
     pub fn get(&mut self, name: &Vec<u8>) -> Option<(Rc<RefCell<PITNode>>, u64, Vec<NextHop>)> {
+        // INCORRECT FOR GETTING STRATEGY AND NEXTHOPS
         let mut o = 0; // offset in name
         let mut node_ref_opt = Some(self.root.clone());
         let mut strategy = 0;
