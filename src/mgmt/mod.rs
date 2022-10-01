@@ -152,5 +152,22 @@ pub fn read_addr(frame: &[u8]) -> Result<SocketAddr, std::io::Error> {
 }
 
 pub fn process_frame(table: &mut Table, packet: Arc<UdpPacket>) {
-    println!("Got a MGMT packet in thread from {}", packet.addr.to_string());
+    let tlo = tlv::vec_decode::read_tlo(&packet.data);
+    if tlo.is_err() {
+        return;
+    }
+    let tlo = tlo.unwrap();
+    let frame = &packet.data[tlo.o..];
+
+    let res;
+    if tlo.t == 1 {
+        res = fib::read_insert_hop(table, frame);
+    } else {
+        res = Ok(());
+        println!("Unknown MGMT frame type {}", tlo.t);
+    }
+
+    if res.is_err() {
+        println!("YaNFD: Error processing MGMT frame type {}: {:?}", tlo.t, res);
+    }
 }

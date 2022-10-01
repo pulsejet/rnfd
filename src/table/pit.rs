@@ -27,6 +27,17 @@ impl PITNode {
             nexthops: Vec::new(),
         }
     }
+
+    pub fn insert_hop(&mut self, hop: NextHop) {
+        // Look for existing hop
+        for i in 0..self.nexthops.len() {
+            if self.nexthops[i].addr == hop.addr {
+                self.nexthops[i].cost = hop.cost;
+                return;
+            }
+        }
+        self.nexthops.push(hop);
+    }
 }
 
 #[derive(Debug)]
