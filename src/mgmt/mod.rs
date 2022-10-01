@@ -4,16 +4,16 @@ use std::io::Read;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::{sync::Arc, net::SocketAddr};
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::deque::Injector;
 use crate::socket::UdpPacket;
 use crate::table::Table;
 use crate::tlv;
 use crate::tlv::varnumber::VarNumber;
 
 pub fn thread(
-    chan_in: Receiver<Arc<UdpPacket>>,
-    chan_out: Sender::<(Vec<u8>, SocketAddr)>,
-    chans_pipeline: Vec<Sender<Arc<UdpPacket>>>,
+    chan_in: Arc<Injector<Arc<UdpPacket>>>,
+    chan_out: Arc<Injector::<(Vec<u8>, SocketAddr)>>,
+    chans_pipeline: Vec<Arc<Injector<Arc<UdpPacket>>>>,
 ) {
     // Connect to YaNFD socket
     let stream = UnixStream::connect("/tmp/yanfd.sock.rnfd").unwrap();
@@ -33,8 +33,8 @@ pub fn thread(
 
 fn read_yanfd(
     stream_arc: Arc<UnixStream>,
-    chan_out: Sender::<(Vec<u8>, SocketAddr)>,
-    chans_pipeline: Vec<Sender<Arc<UdpPacket>>>,
+    chan_out: Arc<Injector<(Vec<u8>, SocketAddr)>>,
+    chans_pipeline: Vec<Arc<Injector<Arc<UdpPacket>>>>,
 ) {
     loop {
         let mut buf = [0; 8800];
@@ -51,8 +51,8 @@ fn read_yanfd(
 
 fn read_yanfd_frame(
     frame: &[u8],
-    chan_out: &Sender::<(Vec<u8>, SocketAddr)>,
-    chans_pipeline: &Vec<Sender<Arc<UdpPacket>>>,
+    chan_out: &Arc<Injector<(Vec<u8>, SocketAddr)>>,
+    chans_pipeline: &Vec<Arc<Injector<Arc<UdpPacket>>>>,
 ) {
     let frame_tlo = tlv::vec_decode::read_tlo(frame);
     if frame_tlo.is_err() {
@@ -66,7 +66,7 @@ fn read_yanfd_frame(
         match res {
             Ok((addr, data)) => {
                 println!("YaNFD: read {} bytes for {:?}", data.len(), addr);
-                chan_out.send((data, addr)).unwrap();
+                chan_out.push((data, addr));
             },
             Err(e) => {
                 println!("YaNFD: parsing error {:?}", e);
@@ -77,13 +77,13 @@ fn read_yanfd_frame(
     }
 }
 
-fn read_yanfd_mgmt_frame(frame: &[u8], chans_pipeline: &Vec<Sender<Arc<UdpPacket>>>) {
+fn read_yanfd_mgmt_frame(frame: &[u8], chans_pipeline: &Vec<Arc<Injector<Arc<UdpPacket>>>>) {
     let pack = Arc::new(UdpPacket {
         data: frame.to_vec(),
         addr: SocketAddr::from(([0, 0, 0, 0], 0)),
     });
     for chan in chans_pipeline {
-        chan.send(pack.clone()).unwrap();
+        chan.push(pack.clone());
     }
 }
 
@@ -103,9 +103,23 @@ fn read_yanfd_data_frame(frame: &[u8]) -> Result<(SocketAddr, Vec<u8>), std::io:
     Ok((addr, data.to_vec()))
 }
 
-fn send_yanfd(chan_in: Receiver<Arc<UdpPacket>>, stream_arc: Arc<UnixStream>) {
+fn send_yanfd(chan_in: Arc<Injector<Arc<UdpPacket>>>, stream_arc: Arc<UnixStream>) {
     loop {
-        let packet = chan_in.recv().unwrap();
+        let steal = chan_in.steal();
+        let packet;
+        match steal {
+            crossbeam::deque::Steal::Success(p) => {
+                packet = p;
+            }
+            crossbeam::deque::Steal::Empty => {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                continue;
+            }
+            crossbeam::deque::Steal::Retry => {
+                continue;
+            }
+        }
+
         let mut stream = &*stream_arc;
 
         let addr_str = packet.addr.to_string();

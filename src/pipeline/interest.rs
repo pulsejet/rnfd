@@ -85,7 +85,7 @@ pub fn process_interest(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::T
                 let mut node = node_ref.borrow_mut();
                 is_new = node.in_records.len() == 0;
                 let entry = InRecord::new(&interest, packet.addr);
-                node.in_records.push_back(entry);
+                node.in_records.push(entry);
             }
 
             // Move walk results to interest struct
@@ -138,6 +138,6 @@ pub fn on_outgoing_interest(table: &mut Table, packet: Arc<UdpPacket>, interest:
 
         // Send packet
         // TODO: update nexthop field first
-        table.send_chan.send((packet.data.clone(), nexthop.addr)).unwrap();
+        table.send_chan.push((packet.data.clone(), nexthop.addr));
     }
 }

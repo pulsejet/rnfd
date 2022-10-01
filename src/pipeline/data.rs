@@ -17,7 +17,7 @@ pub fn process_data(table: &mut Table, packet: Arc<UdpPacket>, p_tlo: tlv::TLO) 
     // Send to all downstreams for all inrecords
     for entry in entries {
         for in_record in &entry.borrow().in_records {
-            table.send_chan.send((packet.data.clone(), in_record.face)).unwrap();
+            table.send_chan.push((packet.data.clone(), in_record.face));
         }
     }
 }

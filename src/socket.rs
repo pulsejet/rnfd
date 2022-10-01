@@ -1,7 +1,7 @@
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crossbeam::channel::{Sender, Receiver};
+use crossbeam::deque::Injector;
 use socket2::Socket;
 
 #[derive(Debug)]
@@ -12,8 +12,8 @@ pub struct UdpPacket {
 
 pub fn listen_udp(
     path: &str,
-    sender: Sender<Arc<UdpPacket>>,
-    receiver: Receiver<(Vec<u8>, SocketAddr)>
+    sender: Arc<Injector<Arc<UdpPacket>>>,
+    receiver: Arc<Injector<(Vec<u8>, SocketAddr)>>
 ) -> Result<(), std::io::Error> {
     let addr: SocketAddr = path.parse().unwrap();
     let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::DGRAM, None).unwrap();
@@ -21,21 +21,30 @@ pub fn listen_udp(
     socket.bind(&addr.into()).unwrap();
     let socket_arc = Arc::new(socket);
 
-    thread_out(socket_arc.clone(), receiver);
-    thread_in(socket_arc, sender);
+    thread_out(socket_arc.clone(), receiver.clone());
+    thread_in(socket_arc.clone(), sender.clone());
     Ok(())
 }
 
-fn thread_out(socket: Arc<Socket>, receiver: Receiver<(Vec<u8>, SocketAddr)>) {
+fn thread_out(socket: Arc<Socket>, receiver: Arc<Injector<(Vec<u8>, SocketAddr)>>) {
     std::thread::spawn(move || {
         loop {
-            let (data, addr) = receiver.recv().unwrap();
-            socket.send_to(&data, &addr.into()).unwrap();
+            let steal = receiver.steal();
+            match steal {
+                crossbeam::deque::Steal::Success(packet) => {
+                    let (data, addr) = packet;
+                    socket.send_to(&data, &addr.into()).unwrap();
+                }
+                crossbeam::deque::Steal::Empty => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                crossbeam::deque::Steal::Retry => {}
+            }
         }
     });
 }
 
-fn thread_in(socket: Arc<Socket>, sender: Sender<Arc<UdpPacket>>,) {
+fn thread_in(socket: Arc<Socket>, sender: Arc<Injector<Arc<UdpPacket>>>,) {
     let mut buf: [MaybeUninit<u8>; 8800] = unsafe {
         MaybeUninit::uninit().assume_init()
     };
@@ -49,7 +58,7 @@ fn thread_in(socket: Arc<Socket>, sender: Sender<Arc<UdpPacket>>,) {
                     data: data.to_vec(),
                     addr: src.as_socket().unwrap(),
                 });
-                sender.send(packet).unwrap();
+                sender.push(packet);
             }
             Err(_) => {}
         }

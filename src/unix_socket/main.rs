@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::io::Write;
 mod stream_decode;
 
-fn handle_client(mut stream: UnixStream) {
+fn handle_client(stream: UnixStream) {
     // Start UDP socket to rNFD
     let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::DGRAM, None).unwrap();
     let socket_arc = Arc::new(socket);
@@ -17,7 +17,7 @@ fn handle_client(mut stream: UnixStream) {
     let stream_arc_clone = stream_arc.clone();
 
     // Start thread to read from UDP socket and write to Unix socket
-    let t = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         let mut stream = &*stream_arc_clone;
         let mut buf: [MaybeUninit<u8>; 8800] = unsafe {
             MaybeUninit::uninit().assume_init()
@@ -41,11 +41,11 @@ fn handle_client(mut stream: UnixStream) {
 
     // Start thread to read from unix socket and write to UDP socket
     let mut stream = BufReader::new(&*stream_arc);
+    let addr: SocketAddr = "127.0.0.1:7766".parse().unwrap();
     loop {
         let res = stream_decode::read_tlv(&mut stream);
         match res {
             Ok(packet) => {
-                let addr: SocketAddr = "127.0.0.1:7766".parse().unwrap();
                 socket_arc.send_to(&packet.data, &addr.into()).unwrap();
             }
             Err(e) => {

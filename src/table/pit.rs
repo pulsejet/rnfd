@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, LinkedList}, net::SocketAddr, rc::Rc, cell::RefCell };
+use std::{collections::HashMap, net::SocketAddr, rc::Rc, cell::RefCell };
 use crate::{pipeline::Interest, tlv::vec_decode};
 
 #[derive(Debug, Clone, Copy)]
@@ -10,7 +10,7 @@ pub struct NextHop {
 pub struct PITNode {
     pub name: Vec<u8>,
     pub children: HashMap<u64, Rc<RefCell<PITNode>>>,
-    pub in_records: LinkedList<InRecord>,
+    pub in_records: Vec<InRecord>,
     pub out_records: HashMap<u64, OutRecord>,
     pub strategy: u64,
     pub nexthops: Vec<NextHop>,
@@ -21,7 +21,7 @@ impl PITNode {
         PITNode {
             name: name,
             children: HashMap::new(),
-            in_records: LinkedList::new(),
+            in_records: Vec::new(),
             out_records: HashMap::new(),
             strategy: 0,
             nexthops: Vec::new(),

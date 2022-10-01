@@ -1,17 +1,26 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crossbeam::channel::{Receiver, Sender};
+
+use crossbeam::deque::Injector;
 
 use crate::socket::UdpPacket;
 use crate::tlv;
 use crate::table::Table;
 
-pub fn thread(chan_in: Receiver<Arc<UdpPacket>>, chan_out: Sender<(Vec<u8>, SocketAddr)>) {
+pub fn thread(chan_in: Arc<Injector<Arc<UdpPacket>>>, chan_out: Arc<Injector<(Vec<u8>, SocketAddr)>>) {
     std::thread::spawn(move || {
         let mut table = Table::new(chan_out);
         loop {
-            let packet = chan_in.recv().unwrap();
-            process_packet(&mut table, packet);
+            let steal = chan_in.steal();
+            match steal {
+                crossbeam::deque::Steal::Success(packet) => {
+                    process_packet(&mut table, packet);
+                }
+                crossbeam::deque::Steal::Empty => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                crossbeam::deque::Steal::Retry => {}
+            }
         }
     });
 }

@@ -1,30 +1,37 @@
 use super::tlv;
 use super::socket::UdpPacket;
 use std::sync::Arc;
-use crossbeam::channel::Sender;
 
-use crossbeam::channel::Receiver;
+use crossbeam::deque::Injector;
 
 // /8=localhost/8=nfd
 const MGMT_MATCH: &'static [u8] = &[8, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116, 8, 3, 110, 102, 100];
 
 pub fn thread(
-    chan_in: Receiver<Arc<UdpPacket>>,
-    chan_mgmt: Sender<Arc<UdpPacket>>,
-    chans_out: Vec<Sender<Arc<UdpPacket>>>,
+    chan_in: Arc<Injector<Arc<UdpPacket>>>,
+    chan_mgmt: Arc<Injector<Arc<UdpPacket>>>,
+    chans_out: Vec<Arc<Injector<Arc<UdpPacket>>>>,
 ) {
     std::thread::spawn(move || {
         loop {
-            let packet = chan_in.recv().unwrap();
-            dispatch_udp(packet, &chan_mgmt, &chans_out);
+            let steal = chan_in.steal();
+            match steal {
+                crossbeam::deque::Steal::Success(packet) => {
+                    dispatch_udp(packet, &chan_mgmt, &chans_out);
+                }
+                crossbeam::deque::Steal::Empty => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                crossbeam::deque::Steal::Retry => {}
+            }
         }
     });
 }
 
 fn dispatch_udp(
     packet: Arc<UdpPacket>,
-    chan_mgmt: &Sender<Arc<UdpPacket>>,
-    chans_out: &Vec<Sender<Arc<UdpPacket>>>,
+    chan_mgmt: &Arc<Injector<Arc<UdpPacket>>>,
+    chans_out: &Vec<Arc<Injector<Arc<UdpPacket>>>>,
 ) {
     let res = tlv::vec_decode::read_tlo(&packet.data[..]);
     match res {
@@ -59,9 +66,17 @@ fn dispatch_udp(
                         }
                     }
                     if is_mgmt {
-                        chan_mgmt.send(packet).unwrap();
+                        chan_mgmt.push(packet);
                         return;
                     }
+                }
+
+                if name_tlo.l > 30  { // hackkkkkkkk
+                    // flood to all pipelines
+                    for chan in chans_out {
+                        chan.push(packet.clone());
+                    }
+                    return;
                 }
 
                 // Hash the name
@@ -71,9 +86,7 @@ fn dispatch_udp(
                     hash += *b as u64;
                 }
                 let idx = (hash % chans_out.len() as u64) as usize;
-                if chans_out[idx].send(packet).is_err() {
-                    println!("Failed to send packet to pipeline");
-                }
+                chans_out[idx].push(packet);
             } else {
                 println!("dispatch: unknown TLV type, dropping {:?}", tlo.t);
             }
