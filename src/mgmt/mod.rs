@@ -1,5 +1,4 @@
-pub mod table;
-pub mod fib;
+mod fib;
 
 use std::io::Read;
 use std::io::Write;

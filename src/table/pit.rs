@@ -42,13 +42,13 @@ impl PITNode {
 
 #[derive(Debug)]
 pub struct InRecord {
-    expiry: u64,
-    face: std::net::SocketAddr,
-    can_be_prefix: Option<bool>,
-    must_be_fresh: Option<bool>,
-    nonce: Option<u32>,
-    lifetime: Option<u64>,
-    hop_limit: Option<u8>,
+    pub expiry: u64,
+    pub face: std::net::SocketAddr,
+    pub can_be_prefix: Option<bool>,
+    pub must_be_fresh: Option<bool>,
+    pub nonce: Option<u32>,
+    pub lifetime: Option<u64>,
+    pub hop_limit: Option<u8>,
 }
 
 impl InRecord {
@@ -138,17 +138,20 @@ impl PIT {
      * Find a name node in the PIT
      * Returns (node, strategy, nexthops)
      */
-    pub fn get(&mut self, interest: &Interest) -> Option<(Rc<RefCell<PITNode>>, u64, Vec<NextHop>)> {
+    pub fn get(&mut self, name: &Vec<u8>) -> Option<(Rc<RefCell<PITNode>>, u64, Vec<NextHop>)> {
         let mut o = 0; // offset in name
         let mut node_ref_opt = Some(self.root.clone());
         let mut strategy = 0;
         let mut nexthops = Vec::new();
 
-        while o < interest.name.len() {
-            let tlo = vec_decode::read_tlo(&interest.name[o..]);
+        while o < name.len() {
+            let tlo = vec_decode::read_tlo(&name[o..]);
 
             node_ref_opt = {
-                let node_ref = node_ref_opt.unwrap();
+                let node_ref = match node_ref_opt {
+                    Some(n) => n,
+                    None => { return None; }
+                };
                 let node = node_ref.borrow();
 
                 if node.strategy > 0 {
@@ -160,7 +163,7 @@ impl PIT {
 
                 match tlo {
                     Ok(tlo) => {
-                        let n_name = &interest.name[o+tlo.o..o+tlo.o+tlo.l as usize];
+                        let n_name = &name[o..o+tlo.o+tlo.l as usize];
                         let n_hash = fasthash::metro::hash64(n_name);
                         let n = node.children.get(&n_hash);
                         o += tlo.o + tlo.l as usize;
@@ -178,5 +181,46 @@ impl PIT {
             Some(n) => { Some((n, strategy, nexthops)) },
             None => { None }
         }
+    }
+
+    /**
+     * Find name nodes in the PIT that match a name including CanBePrefix higher components
+     * Returns nodes
+     */
+    pub fn get_all_can_be_pfx(&mut self, name: &Vec<u8>) -> Vec<Rc<RefCell<PITNode>>> {
+        let mut o = 0; // offset in name
+        let mut node_ref_opt = Some(self.root.clone());
+        let mut nodes = Vec::new();
+
+        while o < name.len() {
+            let tlo = vec_decode::read_tlo(&name[o..]);
+
+            node_ref_opt = {
+                let node_ref = match node_ref_opt {
+                    Some(n) => n,
+                    None => { return nodes; }
+                };
+                let node = node_ref.borrow();
+
+                match tlo {
+                    Ok(tlo) => {
+                        let n_name = &name[o..o+tlo.o+tlo.l as usize];
+                        let n_hash = fasthash::metro::hash64(n_name);
+                        let n = node.children.get(&n_hash);
+                        o += tlo.o + tlo.l as usize;
+                        match n {
+                            Some(n) => {
+                                nodes.push(n.clone());
+                                Some(n.clone())
+                            },
+                            None => { None }
+                        }
+                    }
+                    Err(_) => { None }
+                }
+            };
+        }
+
+        nodes
     }
 }

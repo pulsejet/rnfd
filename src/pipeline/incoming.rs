@@ -25,7 +25,9 @@ fn process_packet(table: &mut Table, packet: Arc<UdpPacket>) {
     let p_tlo = tlv::vec_decode::read_tlo(&packet.data[..]).unwrap(); // already checked
     if p_tlo.t == tlv::Type::Interest as u64 {
         super::interest::process_interest(table, packet, p_tlo);
+    } else if p_tlo.t == tlv::Type::Data as u64 {
+        super::data::process_data(table, packet, p_tlo);
     } else {
-        println!("Unknown TLV type, dropping");
+        println!("incoming: unknown TLV type, dropping: {:?}", p_tlo.t);
     }
 }

@@ -8,21 +8,21 @@ mod table;
 mod mgmt;
 
 const NUM_DISPATCH_THREADS: usize = 2;
-const NUM_PIPELINE_THREADS: usize = 2;
+const NUM_PIPELINE_THREADS: usize = 1;
 
 fn main() {
     // Connection-to-dispatcher queue
-    let (s1, r1) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50);
+    let (s1, r1) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50000);
 
     // Dispatcher-to-pipeline queues
     let mut pipeline_queues = Vec::new();
     for _ in 0..NUM_PIPELINE_THREADS {
-        let (s2, r2) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50);
+        let (s2, r2) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50000);
         pipeline_queues.push((s2, r2));
     }
 
     // Dispatcher-to-management queue
-    let (sm, rm) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(50);
+    let (sm, rm) = crossbeam::channel::bounded::<Arc<socket::UdpPacket>>(1000);
 
     // Start dispatch threads
     let mut dispatchers = Vec::new();
@@ -38,7 +38,7 @@ fn main() {
     }
 
     // Pipeline to connection queue
-    let (s3, r3) = crossbeam::channel::bounded::<(Vec<u8>, SocketAddr)>(50);
+    let (s3, r3) = crossbeam::channel::bounded::<(Vec<u8>, SocketAddr)>(50000);
 
     { // Start management thread
         let mut queues = Vec::new();

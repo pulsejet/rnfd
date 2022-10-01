@@ -11,8 +11,8 @@ name = "daemon"
 path = "src/main.rs"
 
 [[bin]]
-name = "unix-socket"
-path = "src/unix-socket/main.rs"
+name = "unix_socket"
+path = "src/unix_socket/main.rs"
 
 [dependencies]
 crossbeam = "0.8"

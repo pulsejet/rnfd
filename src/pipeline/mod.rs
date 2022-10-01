@@ -3,9 +3,10 @@ use std::{rc::Rc, cell::RefCell};
 use crate::{tlv, table::pit::{NextHop, PITNode}};
 
 pub mod incoming;
-pub mod interest;
-pub mod strategy;
-pub mod best_route;
+mod interest;
+mod strategy;
+mod best_route;
+mod data;
 
 pub struct Interest {
     pub name: Vec<u8>,

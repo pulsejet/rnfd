@@ -75,7 +75,7 @@ fn dispatch_udp(
                     println!("Failed to send packet to pipeline");
                 }
             } else {
-                println!("Unknown TLV type, dropping");
+                println!("dispatch: unknown TLV type, dropping {:?}", tlo.t);
             }
         }
         Err(e) => {

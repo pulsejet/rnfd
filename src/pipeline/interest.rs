@@ -114,8 +114,6 @@ fn on_cs_miss(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest) {
 }
 
 pub fn on_outgoing_interest(table: &mut Table, packet: Arc<UdpPacket>, interest: Interest, nexthops: Vec<NextHop>) {
-    println!("Outgoing interest: {:?}", interest.name);
-
     // Insert out-records and send packets
     let node_ref = interest.pit_node.unwrap();
     let mut node = node_ref.borrow_mut();
