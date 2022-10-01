@@ -1,4 +1,5 @@
 pub mod table;
+pub mod fib;
 
 use std::io::Read;
 use std::io::Write;
@@ -6,6 +7,7 @@ use std::os::unix::net::UnixStream;
 use std::{sync::Arc, net::SocketAddr};
 use crossbeam::channel::{Receiver, Sender};
 use crate::socket::UdpPacket;
+use crate::table::Table;
 use crate::tlv;
 use crate::tlv::varnumber::VarNumber;
 
@@ -26,11 +28,15 @@ pub fn thread(
 
     // Read from YaNFD socket
     std::thread::spawn(move || {
-        read_yanfd(stream_arc_read, chan_out)
+        read_yanfd(stream_arc_read, chan_out, chans_pipeline)
     });
 }
 
-fn read_yanfd(stream_arc: Arc<UnixStream>, chan_out: Sender::<(Vec<u8>, SocketAddr)>) {
+fn read_yanfd(
+    stream_arc: Arc<UnixStream>,
+    chan_out: Sender::<(Vec<u8>, SocketAddr)>,
+    chans_pipeline: Vec<Sender<Arc<UdpPacket>>>,
+) {
     loop {
         let mut buf = [0; 8800];
         let mut stream = &*stream_arc;
@@ -40,7 +46,24 @@ fn read_yanfd(stream_arc: Arc<UnixStream>, chan_out: Sender::<(Vec<u8>, SocketAd
         }
 
         let frame = &buf[..len];
-        let res = read_yanfd_frame(frame);
+        read_yanfd_frame(frame, &chan_out, &chans_pipeline);
+    }
+}
+
+fn read_yanfd_frame(
+    frame: &[u8],
+    chan_out: &Sender::<(Vec<u8>, SocketAddr)>,
+    chans_pipeline: &Vec<Sender<Arc<UdpPacket>>>,
+) {
+    let frame_tlo = tlv::vec_decode::read_tlo(frame);
+    if frame_tlo.is_err() {
+        return;
+    }
+    let frame_tlo = frame_tlo.unwrap();
+
+    let c_frame = &frame[frame_tlo.o..];
+    if frame_tlo.t == 6 {
+        let res = read_yanfd_data_frame(c_frame);
         match res {
             Ok((addr, data)) => {
                 println!("YaNFD: read {} bytes for {:?}", data.len(), addr);
@@ -50,32 +73,28 @@ fn read_yanfd(stream_arc: Arc<UnixStream>, chan_out: Sender::<(Vec<u8>, SocketAd
                 println!("YaNFD: parsing error {:?}", e);
             }
         }
+    } else if frame_tlo.t == 3 {
+        read_yanfd_mgmt_frame(c_frame, &chans_pipeline);
     }
 }
 
-fn read_yanfd_frame(frame: &[u8]) -> Result<(SocketAddr, Vec<u8>), std::io::Error> {
-    let frame_tlo = tlv::vec_decode::read_tlo(frame)?;
+fn read_yanfd_mgmt_frame(frame: &[u8], chans_pipeline: &Vec<Sender<Arc<UdpPacket>>>) {
+    let pack = Arc::new(UdpPacket {
+        data: frame.to_vec(),
+        addr: SocketAddr::from(([0, 0, 0, 0], 0)),
+    });
+    for chan in chans_pipeline {
+        chan.send(pack.clone()).unwrap();
+    }
+}
 
-    let c_frame = &frame[frame_tlo.o..];
-
+fn read_yanfd_data_frame(frame: &[u8]) -> Result<(SocketAddr, Vec<u8>), std::io::Error> {
     // Get address (TLV type 4)
-    let addr_tlo = tlv::vec_decode::read_tlo(c_frame)?;
-    if addr_tlo.t != 4 {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Expected TLV type 4"));
-    }
-    let addr = &c_frame[addr_tlo.o..addr_tlo.o+addr_tlo.l as usize];
-    let addr_str = std::str::from_utf8(addr);
-    if addr_str.is_err() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid address"));
-    }
-    let addr = addr_str.unwrap().parse::<SocketAddr>();
-    if addr.is_err() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid address"));
-    }
-    let addr = addr.unwrap();
+    let addr_tlo = tlv::vec_decode::read_tlo(frame)?;
+    let addr = read_addr(&frame)?;
 
     // Peel off link layer header
-    let mut data = &c_frame[addr_tlo.o+addr_tlo.l as usize..];
+    let mut data = &frame[addr_tlo.o+addr_tlo.l as usize..];
     let mut data_tlo = tlv::vec_decode::read_tlo(data)?;
     while data_tlo.t != 6 {
         data = &data[data_tlo.o as usize..];
@@ -88,7 +107,6 @@ fn read_yanfd_frame(frame: &[u8]) -> Result<(SocketAddr, Vec<u8>), std::io::Erro
 fn send_yanfd(chan_in: Receiver<Arc<UdpPacket>>, stream_arc: Arc<UnixStream>) {
     loop {
         let packet = chan_in.recv().unwrap();
-        println!("Got a management packet, from {}", packet.addr.to_string());
         let mut stream = &*stream_arc;
 
         let addr_str = packet.addr.to_string();
@@ -115,10 +133,24 @@ fn send_yanfd(chan_in: Receiver<Arc<UdpPacket>>, stream_arc: Arc<UnixStream>) {
     }
 }
 
-fn process_mgmt(
-    packet: Arc<UdpPacket>,
-    chan_out: &Sender<(Vec<u8>, SocketAddr)>,
-    chans_pipeline: &Vec<Sender<Arc<UdpPacket>>>,
-) {
-    println!("Got a management packet, {:?}", packet.data);
+pub fn read_addr(frame: &[u8]) -> Result<SocketAddr, std::io::Error> {
+    let addr_tlo = tlv::vec_decode::read_tlo(frame)?;
+    if addr_tlo.t != 4 {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Expected TLV type 4"));
+    }
+    let addr = &frame[addr_tlo.o..addr_tlo.o+addr_tlo.l as usize];
+    let addr_str = std::str::from_utf8(addr);
+    if addr_str.is_err() {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid address"));
+    }
+    let addr = addr_str.unwrap().parse::<SocketAddr>();
+    if addr.is_err() {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid address"));
+    }
+    let addr = addr.unwrap();
+    Ok(addr)
+}
+
+pub fn process_frame(table: &mut Table, packet: Arc<UdpPacket>) {
+    println!("Got a MGMT packet in thread from {}", packet.addr.to_string());
 }

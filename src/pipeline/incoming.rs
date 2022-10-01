@@ -29,6 +29,11 @@ pub fn thread(chan_in: Receiver<Arc<UdpPacket>>, chan_out: Sender<(Vec<u8>, Sock
 }
 
 fn process_packet(table: &mut Table, packet: Arc<UdpPacket>) {
+    if packet.addr.port() == 0 {
+        crate::mgmt::process_frame(table, packet);
+        return;
+    }
+
     let p_tlo = tlv::vec_decode::read_tlo(&packet.data[..]).unwrap(); // already checked
     if p_tlo.t == tlv::Type::Interest as u64 {
         super::interest::process_interest(table, packet, p_tlo);
